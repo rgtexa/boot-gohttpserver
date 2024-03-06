@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type apiConfig struct {
@@ -18,13 +20,27 @@ func main() {
 		fileserverHits: 0,
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
-	mux.HandleFunc("/healthz", handlerReadiness)
-	mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
-	mux.HandleFunc("/reset", apiCfg.handlerReset)
+	r := chi.NewRouter()
+	api := chi.NewRouter()
+	admin := chi.NewRouter()
 
-	corsMux := middlewareCors(mux)
+	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
+	r.Handle("/app/*", fsHandler)
+	r.Handle("/app", fsHandler)
+	r.Get("/assets/*", func(w http.ResponseWriter, r *http.Request) {
+		//rctx := chi.RouteContext(r.Context())
+		//pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+		fs := http.StripPrefix("/app/", http.FileServer(http.Dir(filepathRoot)))
+		fs.ServeHTTP(w, r)
+	})
+	api.Get("/healthz", handlerReadiness)
+	api.Get("/reset", apiCfg.handlerReset)
+	r.Mount("/api", api)
+
+	admin.Get("/metrics", apiCfg.handlerMetrics)
+	r.Mount("/admin", admin)
+
+	corsMux := middlewareCors(r)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -36,9 +52,9 @@ func main() {
 }
 
 func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits)))
+	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits)
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
