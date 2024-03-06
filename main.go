@@ -1,81 +1,49 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 )
 
 type apiConfig struct {
 	fileserverHits int
 }
 
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/app/" {
-			cfg.addHit()
-			w.Header().Set("Cache-Control", "no-cache")
-			w.WriteHeader(http.StatusOK)
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (cfg *apiConfig) addHit() int {
-	cfg.fileserverHits++
-	return cfg.fileserverHits
-}
-
-func (cfg *apiConfig) resetHits() int {
-	cfg.fileserverHits = 0
-	return cfg.fileserverHits
-}
-
-func middlewareCors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 func main() {
+	const filepathRoot = "."
 	const port = "8080"
-	//const fsRoot = "."
-	var apiCfg apiConfig
+
+	apiCfg := apiConfig{
+		fileserverHits: 0,
+	}
 
 	mux := http.NewServeMux()
-	metricsMux := (*apiConfig).middlewareMetricsInc(&apiCfg, mux)
-	mux.Handle("/app", apiCfg.middlewareMetricsInc(metricsMux))
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(http.StatusText(http.StatusOK)))
-	})
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hits: " + strconv.Itoa(apiCfg.fileserverHits)))
-	})
-	mux.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hits: " + strconv.Itoa(apiCfg.resetHits())))
-	})
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
+	mux.HandleFunc("/healthz", handlerReadiness)
+	mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
+	mux.HandleFunc("/reset", apiCfg.handlerReset)
 
-	//corsMux := middlewareCors(mux)
+	corsMux := middlewareCors(mux)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: metricsMux,
+		Handler: corsMux,
 	}
 
-	log.Printf("Serving on port: %s\n", port)
+	log.Printf("Serving files from %s on port: %s\n", filepathRoot, port)
 	log.Fatal(srv.ListenAndServe())
+}
 
+func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits)))
+}
+
+func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg.fileserverHits++
+		next.ServeHTTP(w, r)
+	})
 }
