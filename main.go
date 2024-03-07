@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -35,6 +36,7 @@ func main() {
 	})
 	api.Get("/healthz", handlerReadiness)
 	api.Get("/reset", apiCfg.handlerReset)
+	api.Post("/validate_chirp", validateChirp)
 	r.Mount("/api", api)
 
 	admin.Get("/metrics", apiCfg.handlerMetrics)
@@ -62,4 +64,40 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits++
 		next.ServeHTTP(w, r)
 	})
+}
+
+func validateChirp(w http.ResponseWriter, r *http.Request) {
+	type chirp struct {
+		Body string `json:"body"`
+	}
+	type chirpErr struct {
+		Error string `json:"error"`
+	}
+
+	type chirpValid struct {
+		Valid bool `json:"valid"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	c := chirp{}
+	err := decoder.Decode(&c)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "%v", chirpErr{"Something went wrong"})
+		return
+	}
+	if len(c.Body) > 140 {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "%v", chirpErr{"Chirp is too long"})
+		return
+	}
+	respBody := chirpValid{Valid: true}
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "Error marshalling JSON: %s", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(dat)
 }
