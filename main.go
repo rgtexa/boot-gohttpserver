@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -66,38 +67,53 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func validateChirp(w http.ResponseWriter, r *http.Request) {
-	type chirp struct {
-		Body string `json:"body"`
-	}
-	type chirpErr struct {
-		Error string `json:"error"`
-	}
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	respondWithJSON(w, code, map[string]string{"error": message})
+}
 
-	type chirpValid struct {
-		Valid bool `json:"valid"`
-	}
-	decoder := json.NewDecoder(r.Body)
-	c := chirp{}
-	err := decoder.Decode(&c)
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	response, err := json.Marshal(payload)
 	if err != nil {
-		w.WriteHeader(500)
-		fmt.Fprintf(w, "%v", chirpErr{"Something went wrong"})
-		return
-	}
-	if len(c.Body) > 140 {
-		w.WriteHeader(400)
-		fmt.Fprintf(w, "%v", chirpErr{"Chirp is too long"})
-		return
-	}
-	respBody := chirpValid{Valid: true}
-	dat, err := json.Marshal(respBody)
-	if err != nil {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Error marshalling JSON: %s", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	w.Write(dat)
+	w.WriteHeader(code)
+	w.Write(response)
+}
+
+func cleanChirp(s string) string {
+	words := []string{"kerfuffle", "Kerfuffle", "fornax", "Fornax", "sharbert", "Sharbert"}
+	for _, word := range words {
+		s = strings.ReplaceAll(s, word, "****")
+	}
+	return s
+}
+
+func validateChirp(w http.ResponseWriter, r *http.Request) {
+	type chirp struct {
+		Body string `json:"body"`
+	}
+
+	type chirpResponse struct {
+		CleanedBody string `json:"cleaned_body"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	c := chirp{}
+	err := decoder.Decode(&c)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+	if len(c.Body) > 140 {
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+		return
+	}
+	cleaned := cleanChirp(c.Body)
+	respBody := chirpResponse{
+		CleanedBody: cleaned,
+	}
+	respondWithJSON(w, http.StatusOK, respBody)
 }
