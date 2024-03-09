@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"internal/godb"
 	"log"
 	"net/http"
 	"strings"
@@ -92,16 +93,9 @@ func cleanChirp(s string) string {
 }
 
 func validateChirp(w http.ResponseWriter, r *http.Request) {
-	type chirp struct {
-		Body string `json:"body"`
-	}
-
-	type chirpResponse struct {
-		CleanedBody string `json:"cleaned_body"`
-	}
 
 	decoder := json.NewDecoder(r.Body)
-	c := chirp{}
+	c := godb.Chirp{}
 	err := decoder.Decode(&c)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
@@ -112,7 +106,7 @@ func validateChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cleaned := cleanChirp(c.Body)
-	respBody := chirpResponse{
+	respBody := godb.ChirpResponse{
 		CleanedBody: cleaned,
 	}
 	respondWithJSON(w, http.StatusOK, respBody)
