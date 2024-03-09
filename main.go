@@ -17,6 +17,7 @@ type apiConfig struct {
 
 func main() {
 	const filepathRoot = "."
+	const dbFile = "chirps.json"
 	const port = "8080"
 
 	apiCfg := apiConfig{
@@ -31,8 +32,6 @@ func main() {
 	r.Handle("/app/*", fsHandler)
 	r.Handle("/app", fsHandler)
 	r.Get("/assets/*", func(w http.ResponseWriter, r *http.Request) {
-		//rctx := chi.RouteContext(r.Context())
-		//pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
 		fs := http.StripPrefix("/app/", http.FileServer(http.Dir(filepathRoot)))
 		fs.ServeHTTP(w, r)
 	})
