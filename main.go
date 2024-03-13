@@ -6,6 +6,7 @@ import (
 	"internal/godb"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -15,9 +16,12 @@ type apiConfig struct {
 	fileserverHits int
 }
 
+const dbFile = "chirps.json"
+
+var db = godb.NewDB(dbFile)
+
 func main() {
 	const filepathRoot = "."
-	const dbFile = "chirps.json"
 	const port = "8080"
 
 	apiCfg := apiConfig{
@@ -37,7 +41,9 @@ func main() {
 	})
 	api.Get("/healthz", handlerReadiness)
 	api.Get("/reset", apiCfg.handlerReset)
-	api.Post("/validate_chirp", validateChirp)
+	api.Post("/chirps", validateChirp)
+	api.Get("/chirps", getChirps)
+	api.Get("/chirps/{id}", getChirpByID)
 	r.Mount("/api", api)
 
 	admin.Get("/metrics", apiCfg.handlerMetrics)
@@ -92,7 +98,6 @@ func cleanChirp(s string) string {
 }
 
 func validateChirp(w http.ResponseWriter, r *http.Request) {
-
 	decoder := json.NewDecoder(r.Body)
 	c := godb.Chirp{}
 	err := decoder.Decode(&c)
@@ -104,9 +109,34 @@ func validateChirp(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 		return
 	}
-	cleaned := cleanChirp(c.Body)
-	respBody := godb.ChirpResponse{
-		CleanedBody: cleaned,
+	c.Body = cleanChirp(c.Body)
+
+	chirp, err := db.CreateChirp(c.Body)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 	}
-	respondWithJSON(w, http.StatusOK, respBody)
+
+	respondWithJSON(w, http.StatusCreated, chirp)
+}
+
+func getChirps(w http.ResponseWriter, r *http.Request) {
+	chirps, err := db.GetChirps()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondWithJSON(w, http.StatusOK, chirps)
+}
+
+func getChirpByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+	chirp, err := db.GetChirpByID(id)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	respondWithJSON(w, http.StatusOK, chirp)
 }
