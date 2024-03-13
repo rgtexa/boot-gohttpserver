@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type apiConfig struct {
@@ -60,6 +61,7 @@ func main() {
 	api.Post("/users", createUser)
 	api.Get("/users", getUsers)
 	api.Get("/users/{id}", getUserByID)
+	api.Post("/login", loginUser)
 	r.Mount("/api", api)
 
 	admin.Get("/metrics", apiCfg.handlerMetrics)
@@ -164,11 +166,18 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 	}
-	user, err := db.CreateUser(u.Email)
+	user, err := db.CreateUser(u.Email, u.Password)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 	}
-	respondWithJSON(w, http.StatusCreated, user)
+	type userResponse struct {
+		Email string `json:"email"`
+		ID    int    `json:"id"`
+	}
+	var resp = userResponse{}
+	resp.Email = user.Email
+	resp.ID = user.ID
+	respondWithJSON(w, http.StatusCreated, resp)
 }
 
 func getUsers(w http.ResponseWriter, r *http.Request) {
@@ -189,4 +198,29 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusNotFound, err.Error())
 	}
 	respondWithJSON(w, http.StatusOK, user)
+}
+
+func loginUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	u := godb.User{}
+	err := decoder.Decode(&u)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	user, err := db.GetUserByEmail(u.Email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(u.Password)); err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+	} else {
+		type userResponse struct {
+			Email string `json:"email"`
+			ID    int    `json:"id"`
+		}
+		var resp = userResponse{}
+		resp.Email = user.Email
+		resp.ID = user.ID
+		respondWithJSON(w, http.StatusOK, resp)
+	}
 }
