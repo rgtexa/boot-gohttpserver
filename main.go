@@ -44,6 +44,9 @@ func main() {
 	api.Post("/chirps", validateChirp)
 	api.Get("/chirps", getChirps)
 	api.Get("/chirps/{id}", getChirpByID)
+	api.Post("/users", createUser)
+	api.Get("/users", getUsers)
+	api.Get("/users/{id}", getUserByID)
 	r.Mount("/api", api)
 
 	admin.Get("/metrics", apiCfg.handlerMetrics)
@@ -139,4 +142,38 @@ func getChirpByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondWithJSON(w, http.StatusOK, chirp)
+}
+
+func createUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	u := godb.User{}
+	err := decoder.Decode(&u)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+	}
+	user, err := db.CreateUser(u.Email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+	respondWithJSON(w, http.StatusCreated, user)
+}
+
+func getUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := db.GetUsers()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+	respondWithJSON(w, http.StatusOK, users)
+}
+
+func getUserByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+	user, err := db.GetUserByID(id)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+	}
+	respondWithJSON(w, http.StatusOK, user)
 }
