@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"internal/godb"
 	"log"
@@ -23,6 +24,18 @@ var db = godb.NewDB(dbFile)
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+	if *dbg {
+		fmt.Print("Debug mode enabled\nRemoving database file if it exists\n")
+		err := db.DeleteDB()
+		if err != nil {
+			fmt.Print("Could not remove database file\n")
+			fmt.Print(err, "\n")
+		} else {
+			fmt.Print("Database file removed\n")
+		}
+	}
 
 	apiCfg := apiConfig{
 		fileserverHits: 0,

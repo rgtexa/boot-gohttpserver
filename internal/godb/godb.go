@@ -43,10 +43,11 @@ func NewDB(path string) *DB {
 
 func (db *DB) ensureDB() error {
 	db.mux.Lock()
-	_, err := os.Create(db.path)
+	f, err := os.Create(db.path)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer f.Close()
 	defer db.mux.Unlock()
 	return nil
 }
@@ -85,6 +86,16 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 		log.Fatal(err, " WriteAt in writeDB")
 	}
 	defer f.Close()
+	defer db.mux.Unlock()
+	return nil
+}
+
+func (db *DB) DeleteDB() error {
+	db.mux.Lock()
+	err := os.Remove(db.path)
+	if err != nil {
+		log.Fatal(err, " Unable to DeleteDB")
+	}
 	defer db.mux.Unlock()
 	return nil
 }
